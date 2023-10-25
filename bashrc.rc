@@ -1,0 +1,39 @@
+## General setup
+
+if ! type "curl" > /dev/null; then
+    curl wttr.in/Nokia
+    echo " "
+fi
+
+if ! type "fortune" > /dev/null; then
+    fortune
+    echo " "
+fi
+
+## Aliases
+
+# You may uncomment the following lines if you want `ls' to be colorized:
+export LS_OPTIONS='--color=auto'
+eval "`dircolors`"
+alias ls='ls $LS_OPTIONS'
+alias ll='ls $LS_OPTIONS -l'
+alias l='ls $LS_OPTIONS -lA'
+
+if ! type "kubectl" > /dev/null; then
+    alias bargectl="kubectl --kubeconfig ~/.kube/config-barge"
+fi
+
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+
+## Commands
+weather(){ curl -s "http://api.wunderground.com/auto/wui/geo/ForecastXML/index.xml?query=${@:-<YOURZIPORLOCATION>}"|perl -ne '/<title>([^<]+)/&&printf "%s: ",$1;/<fcttext>([^<]+)/&&print $1,"\n"';}
+
+## Other settings
+
+# Completion
+[[ -f /usr/share/bash-completion/bash_completion ]] && source /usr/share/bash-completion/bash_completion
+source ~/.bash_completion.d/complete_alias
+
+
