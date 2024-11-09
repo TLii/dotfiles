@@ -3,41 +3,48 @@
 ######### DOTFILE FUNCTIONS ########
 
 # Check if dotfiles are installed; if not, install and if yes, update.
-check_repo() {
-# Check if dotfile repository exists
-    if [[ ! -d DOTFILES_DIR ]]; then
-        git clone "$DOTFILES_REPO_ADDRESS"
-    fi
+
+dotfiles_prepare_variables(){
+  [[ -z $DOTFILES_REPO ]] && DOTFILES_REPO="https://github.com/TLii/dotfiles.git"
+  if [[ -z $DOTFILES_DIR ]]; then
+    DOTFILES_DIR=$(mktemp -d);
+    DOTFILES_USE_TMP=true;
+  fi
+
+  # Export variables
+  export DOTFILES_DIR="$DOTFILES_DIR"
+  export DOTFILES_REPO_ADDRESS="$DOTFILES_REPO_ADDRESS"
+}
+
+dotfiles_install_repo(){
+  [[ -d $DOTFILES_DIR ]] || mkdir -p "$DOTFILES_DIR";
+  git clone -q $DOTFILES_REPO "$DOTFILES_DIR" || \echo "Failed to install dotfiles" && exit 1;
+}
+
+dotfiles_update_repo(){
+  if git -C "$DOTFILES_DIR" rev-parse 2>/dev/null; then
+  git pull -q "$DOTFILES_REPO" "$DOTFILES_DIR"
 }
 
 # Ensure environment variables exist.
-check_variables() {
-    [[ -z $DOTFILES_DIR ]] && DOTFILES_DIR="$HOME/.dotfiles";
-    [[ -n $DOTFILES_DIR ]] && DOTFILES_DIR="${DOTFILES_DIR%/}";
-    [[ -z $DOTFILES_DIR ]] && DOTFILES_DIR="https://github.com/TLii/dotfiles.git"
+dotfiles_check_repo() {
+  elif [[ ! -d $DOTFILES_DIR ]]; then
+    mkdir -p $DOTFILES_DIR
+  elif [[ -d
 
-    # If not yet installed, install, and if installed, update.
-    if [[ ! -d $DOTFILES_DIR ]]; then
+  DOTFILES_DIR="${DOTFILES_DIR%/}";
 
-        [[ -z $DOTFILES_REPO_ADDRESS ]] && echo "Failed to get repository address" && exit 1;
 
-        mkdir -p "$DOTFILES_DIR";
-        git clone -q https://github.com/TLii/dotfiles.git "$DOTFILES_DIR" || echo "Failed to install dotfiles" && exit 1;
+      git pull -q https://github.com/TLii/dotfiles.git "$DOTFILES_DIR" || echo "Failed to update dotfiles";
 
-    else
+  fi
 
-        git pull -q https://github.com/TLii/dotfiles.git "$DOTFILES_DIR" || echo "Failed to update dotfiles";
-
-    fi
-
-    # Export variables
-    export DOTFILES_DIR="$DOTFILES_DIR"
-    export DOTFILES_REPO_ADDRESS="$DOTFILES_REPO_ADDRESS"
 
 }
 
+
 # Link .*rc to corresponding dotfile rc's.
-install_rcfiles() {
+dotfiles_link_files() {
     for rc in "$DOTFILES_DIR"/*.rc; do
         rclink=${rc%.rc}
         rclink=${rclink#$DOTFILES_DIR}
@@ -54,8 +61,26 @@ install_rcfiles() {
     done
 }
 
-prepare() {
-    check_variables;
-    check_repo;
+dotfiles_copy_files() {
+
+    for rc in "$DOTFILES_DIR"/*.rc; do
+        rclink=${rc%.rc}
+        rclink=${rclink#$DOTFILES_DIR}
+        rclink=${rclink#/}
+        rclink="$HOME/.$rclink"
+  done
+
 }
 
+dotfiles_prepare() {
+    dotfiles_prepare_variables;
+    dotfiles_manage_repo;
+}
+
+dotfiles_install() {
+  if $DOTFILES_USE_TMP; then
+    dotfiles_copy_files
+  else
+    dotfiles_link_files
+  fi
+}
