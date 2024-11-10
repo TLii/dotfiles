@@ -1,6 +1,39 @@
 #!/usr/bin/env bash
 
-dotfiles_prepare_variables(){
+#    Dotfiles installer
+#    Copyright (C) 2024  Tuomas Liinamaa <tlii@iki.fi>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+source lib_help.sh
+source lib_setup.sh
+
+
+dotfiles_cleanup(){
+  rm -r "$DOTFILES_DIR"
+}
+
+dotfiles_check_config(){
+
+  # Source config files
+  if [[ -f "$PWD/dotfiles.conf" ]]; then
+    source "$PWD/dotfiles.conf"
+  elif [[ -f "$HOME/.dotfiles.conf" ]]; then
+    source "$HOME/.dotfiles.conf"
+  fi
+
+  # Set default variables
   [[ -z $DOTFILES_REPO ]] && DOTFILES_REPO="https://github.com/TLii/dotfiles.git"
   if [[ -z $DOTFILES_DIR ]]; then
     DOTFILES_DIR=$(mktemp -d);
@@ -10,40 +43,67 @@ dotfiles_prepare_variables(){
   # Export variables
   export DOTFILES_DIR="$DOTFILES_DIR"
   export DOTFILES_REPO_ADDRESS="$DOTFILES_REPO_ADDRESS"
+
 }
 
+dotfiles_silent_run(){
+  # Silent setup runner
+  dotfiles_check_config
+}
+
+dotfiles_main(){
+
+  method=$(echo "$1" | awk '{print tolower($0)}')
+  topic=$(echo "$2" | awk '{print tolower($0)}')
+
+  # Check for interactive terminal and run method
+  if [[ $method == "install" ]]; then
+    if [ -t 0 ]; then
+      # If terminal, launch prompted setup
+      dotfiles_install_prompt
+    else
+      dotfiles_silent_install
+    fi
+  elif [[ $method == "update" ]] && [ -t 0 ]; then
+    # Run updater
+      dotfiles_header
+      dotfiles_check_config
+  elif [[ $method == "help" ]] && [ -t 0 ]; then
+    # Run updater
+    dotfiles_header
+    dotfiles_help "$topic"
+  elif [ -t 0 ]; then
+    echo "Usage: $0 [install|update]"
+    exit 0
+  else
+    # If no terminal and no method, run silently
+    dotfiles_silent_run
+    dotfiles_cleanup
+  fi
+}
+
+
+dotfiles_main "$1" "$2"
+
+
+
+
 dotfiles_install_repo(){
-  [[ -d $DOTFILES_DIR ]] || mkdir -p "$DOTFILES_DIR";
-  git clone -q $DOTFILES_REPO "$DOTFILES_DIR" || \echo "Failed to install dotfiles" && exit 1;
+  [[ -d $DOTFILES_DIR ]] || mkdir -p "$DOTFILES_DIR";
+  git clone -q "$DOTFILES_REPO" "$DOTFILES_DIR" || \echo "Failed to install dotfiles" && exit 1;
 }
 
 dotfiles_update_repo(){
   if git -C "$DOTFILES_DIR" rev-parse 2>/dev/null; then
-  git pull -q "$DOTFILES_REPO" "$DOTFILES_DIR"
-}
-
-# Ensure environment variables exist.
-dotfiles_check_repo() {
-  elif [[ ! -d $DOTFILES_DIR ]]; then
-    mkdir -p $DOTFILES_DIR
-  elif [[ -d
-
-  DOTFILES_DIR="${DOTFILES_DIR%/}";
-
-
-      git pull -q https://github.com/TLii/dotfiles.git "$DOTFILES_DIR" || echo "Failed to update dotfiles";
-
+    git pull -q "$DOTFILES_REPO" "$DOTFILES_DIR"
   fi
-
-
 }
-
 
 # Link .*rc to corresponding dotfile rc's.
 dotfiles_link_files() {
     for rc in "$DOTFILES_DIR"/*.rc; do
         rclink=${rc%.rc}
-        rclink=${rclink#$DOTFILES_DIR}
+        rclink=${rclink#"$DOTFILES_DIR"}
         rclink=${rclink#/}
         rclink="$HOME/.$rclink"
         if [[ -e $rclink ]]; then
@@ -61,7 +121,7 @@ dotfiles_copy_files() {
 
     for rc in "$DOTFILES_DIR"/*.rc; do
         rclink=${rc%.rc}
-        rclink=${rclink#$DOTFILES_DIR}
+        rclink=${rclink#"$DOTFILES_DIR"}
         rclink=${rclink#/}
         rclink="$HOME/.$rclink"
   done
@@ -83,35 +143,30 @@ dotfiles_install() {
 
 dotfiles_create_tempdir(){
   DOTFILES_DIR=$(mktemp -d)
-  export DOTFILES_DIR
+  export DOTFILES_DIR="$DOTFILES_DIR"
 }
 
 dotfiles_prepare_setup(){
   [[ -z $DOTFILES_DIR ]] && dotfiles_create_tempdir
   [[ -z $DOTFILES_REPO ]] && DOTFILES_REPO="https://github.com/TLii/dotfiles.git"
-  export DOTFILES_REPO
-  [[ -d $DOTFILES_DIR ]] || mkdir -p $DOTFILES_DIR
+  export DOTFILES_REPO="$DOTFILES_REPO"
+  [[ -d $DOTFILES_DIR ]] || mkdir -p "$DOTFILES_DIR"
   git clone -q "$DOTFILES_REPO" "$DOTFILES_DIR" || echo "Failed to clone repository" && exit 1;
-  rm -r "$DOTFILES_DIR"
 }
 
-dotfiles_setup() {
-  source "$DOTFILES_DIR"/dotfiles.lib.sh
-}
 
-dotfiles_config(){
+dotfiles_prompt_config(){
   while true; do
     echo "Currently using dotfile repository $DOTFILES_REPO"
-    read -p "Do you want to use a custom repository?"
+    read -r -p "Do you want to use a custom repository?"
   done
 }
 
-dotfiles_prompt() {
+dotfiles_install_prompt() {
   bold=$(tput bold)
   normal=$(tput sgr0)
 
   cat <<EOF
-############### DOTFILES AUTOMATIC INSTALLER ###############
 
 Dotfiles are installed from a Git repository. Choose installation method:
 1)  ${bold}Install with sources:${normal} Clone the repository to a persisting directory (e.g. $HOME/dotfiles) and
@@ -126,11 +181,12 @@ Dotfiles are installed from a Git repository. Choose installation method:
 EOF
 
   while true; do
-      read -p "Which one do you wish to choose? (1 or 2, 0 exits immediately)" decide
+      read -r -p "Which one do you wish to choose? (1 or 2, 0 exits immediately)" decide
       case $decide in
           [1]* ) 
             echo "Install with sources"
-#            dotfiles_config
+            dotfiles_config
+           
             break
           ;;
           [2]* ) 
@@ -148,16 +204,3 @@ EOF
 
 }
 
-dotfiles_silent_run(){
-  dotfiles_prepare_setup
-}
-
-dotfiles_runner(){
-  if [ -t 0 ]; then
-    dotfiles_prompt
-  else
-    dotfiles_silent_run
-  fi
-}
-
-dotfiles_runner
